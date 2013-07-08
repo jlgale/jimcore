@@ -98,47 +98,19 @@ _noop_statement(statement_t *s)
     return 0;
 }
 
-#define run_with_inode(__c, __p, func, args...)                         \
+#define run_with_connection(func, args...)                              \
     ({                                                                  \
-        inode_t _i = resolve_inode((__c), (__p));                       \
         int _r;                                                         \
-        if (_i == INVALID_INODE) {                                      \
-            _r = -ENOENT;                                               \
+        connection_t *_c = connection_acquire();                        \
+        if (_c) {                                                       \
+            _r = func(_c, ##args);                                      \
+            if (_r < 0)                                                 \
+                connection_error(_c);                                   \
+            connection_release(_c);                                     \
         } else {                                                        \
-            _r = func(__c, _i, ##args);                                 \
-            if (_r == -ENOENT)                                          \
-                /* Maybe our cache is out of date. */                   \
-                cache_remove(_i);                                       \
+            _r = -ETRANSIENT;                                           \
         }                                                               \
         _r;                                                             \
-    })
-
-#define run_with_c_inode(__p, func, args...)                    \
-    ({                                                          \
-        auto int _connection(connection_t *_c);                 \
-        int _connection(connection_t *_c)                       \
-        {                                                       \
-            return run_with_inode(_c, (__p), func, ##args);     \
-        }                                                       \
-        run_with_connection(_connection);                       \
-    })
-
-#define run_with_c_inode_updating(__p, func, args ...)          \
-    ({                                                          \
-        auto int _inode(connection_t *_c, inode_t _i);          \
-        int _inode(connection_t *_c, inode_t _i)                \
-        {                                                       \
-            int _r = func(_c, _i, ##args);                      \
-            if (_r >= 0)                                        \
-                acache_remove(_i);                              \
-            return _r;                                          \
-        }                                                       \
-        auto int _connection(connection_t *_c);                 \
-        int _connection(connection_t *_c)                       \
-        {                                                       \
-            return run_with_inode(_c, (__p), _inode);           \
-        }                                                       \
-        run_with_connection(_connection);                       \
     })
 
 #define run_statement(__c, __q, __p)                                    \
